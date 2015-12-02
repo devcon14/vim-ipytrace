@@ -7,7 +7,7 @@ if has("nvim")
       au!
       au TermOpen * let g:last_terminal_job_id = b:terminal_job_id|py enter_terminal()
       au TermOpen * set bufhidden=hide
-      " au BufDelete * :py delete_terminal()
+      au BufDelete * :py delete_terminal()
     augroup END
 endif
 
@@ -31,6 +31,7 @@ nnoremap <F3> :py custom_build_process()<CR>
 nnoremap <leader>c :py run_cell(True)<CR>
 nnoremap <leader>ca :py run_cell(False)<CR>
 nnoremap <C-S> :py follow_trace()<CR>
+nnoremap <F2> :py popup_terminal_window()<CR>
 
 " pycharm style keybindings
 " nmap <silent> <A-S-E> :py terminal_send_selection()<CR>
@@ -62,6 +63,8 @@ if has("nvim")
     tnoremap <C-o> <C-\><C-n><C-o>
     tnoremap <F12> <C-\><C-n>:py toggle_windows()<CR>
     tnoremap <C-b> <C-\><C-n><C-b>
+    tnoremap {{ <C-\><C-n>{
+    tmap <leader><cr> <C-\><C-n><leader><cr>
 endif
 
 command! TogglePasteMode  :py toggle_paste_mode()
@@ -82,6 +85,8 @@ def custom_build_process():
 def enter_terminal():
     global terminals
     if vim.current.buffer.name.endswith("FZF"):
+        return
+    if "git" in vim.current.buffer.name.lower():
         return
     last_terminal_buffer_name = last_terminal_buffer_number = terminal_job_id = None
     current_tab = vim.eval('tabpagenr()')
@@ -114,6 +119,13 @@ def print_terminals():
     """
 
 def delete_terminal():
+    print "delete", vim.current.buffer.name
+    to_delete_id = -1
+    for index, terminal in enumerate(terminals):
+        if terminal[2] == vim.current.buffer.name:
+            to_delete_id = index
+    if to_delete_id != -1:
+        del terminals[to_delete_id]
     """
     print vim.current.buffer.name
     marked_terminal = None
@@ -162,6 +174,8 @@ def open_if_no_terminal():
     except Exception as e:
         open_neo_terminal()
         neo_terminal_send(["ipython\n"])
+        neo_terminal_send(["%load_ext autoreload"])
+        neo_terminal_send(["%autoreload 2"])
 
 
 # ====
@@ -205,6 +219,19 @@ def open_neo_terminal():
     # vim.command(":normal sj")
     # vim.command(":normal vl")
     vim.command(":terminal")
+
+
+def popup_terminal_window():
+    number_of_windows = vim.eval("winnr('$')")
+    number_of_windows = int(number_of_windows)
+    if number_of_windows > 1:
+        vim.command(":normal l")
+        vim.command(":q")
+    else:
+        # bring up existing term buffer in side window
+        vim.command(":normal vl")
+        vim.command(":b term")
+        vim.command(":normal h")
 
 
 # ======
@@ -331,7 +358,7 @@ def follow_trace():
     filename = ""
     while cursor_line_number != 0 and not finished:
         line = vim.current.buffer[cursor_line_number]
-        m = re.search("--> ([0-9]+)", line)
+        m = re.search("-+> ([0-9]+)", line)
         if m:
             line_number = m.group(1)
         m = re.search("[^/]*(/.*?\.pyc?)", line)
