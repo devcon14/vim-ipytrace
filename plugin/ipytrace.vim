@@ -1,3 +1,4 @@
+" NOTE we can also use :term jupyter console straight
 if !has('python')
     finish
 endif
@@ -8,21 +9,26 @@ if has("nvim")
       au TermOpen * let g:last_terminal_job_id = b:terminal_job_id|py enter_terminal()
       au TermOpen * set bufhidden=hide
       au BufDelete * :py delete_terminal()
+      " automatic insert mode when enter
+      " au WinEnter term://* startinsert
     augroup END
 endif
 
 let g:ipytrace_ipython_paste = 0
 let g:ipytrace_script_file=expand("<sfile>")
 let g:configured_run_file = ''
+" let g:terminal_scrollback_buffer_size = ?
 
 " spyder style keybindings
 nnoremap <F4> :py open_terminal()<CR>
-nnoremap <F9> :py terminal_send_selection()<CR>
-vnoremap <F9> :py terminal_send_selection()<CR>
-nnoremap <F6> :py configure_and_run()<CR>
 nnoremap <F5> :py run_configuration()<CR>
+" nnoremap <F9> :py terminal_send_selection()<CR>
+" vnoremap <F9> :py terminal_send_selection()<CR>
+vnoremap <F5> :py terminal_send_selection()<CR>
+nnoremap <F6> :py configure_and_run()<CR>
 " cycle windows
 " nnoremap <F7> :exe normal "<C-W><p>"
+nnoremap <leader><F12> :py toggle_windows(reverse=True)<CR>
 nnoremap <F12> :py toggle_windows()<CR>
 nnoremap <F3> :py custom_build_process()<CR>
 
@@ -42,6 +48,7 @@ nnoremap <F2> :py popup_terminal_window()<CR>
 
 " terminal mappings
 if has("nvim")
+    tnoremap <A-space> <C-\><C-n>
     tnoremap <A-Left> <C-\><C-n><C-w>h
     tnoremap <A-Down> <C-\><C-n><C-w>j
     tnoremap <A-Up> <C-\><C-n><C-w>k
@@ -61,6 +68,7 @@ if has("nvim")
     tnoremap <F5> <C-\><C-n>:py run_configuration()<CR>
     tnoremap <C-S> <C-\><C-n>:py follow_trace()<CR>
     tnoremap <C-o> <C-\><C-n><C-o>
+    tnoremap <leader><F12> <C-\><C-n>:py toggle_windows(reverse=True)<CR>
     tnoremap <F12> <C-\><C-n>:py toggle_windows()<CR>
     tnoremap <C-b> <C-\><C-n><C-b>
     tnoremap {{ <C-\><C-n>{
@@ -79,11 +87,34 @@ import time
 terminals = []
 
 # TODO move to dotfiles
+def dev_env():
+    items = []
+    for buf in vim.buffers:
+        items.append(buf.name)
+        for var in buf.vars:
+            print var
+    # TODO
+    # b:terminal_job_id is the buffer var of the "current" buffer
+    # getbufvar
+    # :echo getbufvar(2, 'terminal_job_id')
+    # bufname(id or name_matcher)
+    '''
+    for tab in vim.tabpages:
+        for win in tab.windows:
+            items.append(win.buffer.name)
+    print items
+    '''
+    # vim.windows[1].width = 10
+    # set, get
+    # vim.vars['global_var'], vim.eval("g:global_var")
+    # did I try TermClose, TermCreate au events?
+
 def custom_build_process():
     terminal_send(["!jekyll build --source jekyll/"])
 
 def enter_terminal():
     global terminals
+    # .endswith("/bin/bash") is good indicator of useful term
     if vim.current.buffer.name.endswith("FZF"):
         return
     if "git" in vim.current.buffer.name.lower():
@@ -139,6 +170,17 @@ def delete_terminal():
        vim.command("unlet g:last_terminal_job_id")
     """
 
+def to_visible_term():
+    # FIXME is this duplicating popup_terminal_window?
+    # no that is for a quick key to show the win
+    for winnr, win in enumerate(vim.windows):
+        # print winnr
+        if win.buffer.name.startswith("term"):
+            vim.command(":{}wincmd w".format(winnr + 1))
+            return True
+    return False
+
+
 def go_to_terminal():
     global terminals
     terminal = terminals[-1]
@@ -147,12 +189,13 @@ def go_to_terminal():
     vim.command(":{}tabn".format(terminal[0]))
     # vim.command(":{}wincmd w".format(int(terminal[1]) + 1))
     vim.command(":{}wincmd w".format(terminal[1]))
-    # FIXME this causes nvim to go crazy
+    # FIXME this causes nvim to go crazy, use startinsert instead
     # vim.command(":normal i")
     # terminal_send(["i"])
     """
-    # buffer version
-    vim.command(":call BufOpen({})".format(terminal[4]))
+    if not to_visible_term():
+        # buffer version
+        vim.command(":call BufOpen({})".format(terminal[4]))
 
 
 def get_last_terminal_id():
@@ -173,9 +216,10 @@ def open_if_no_terminal():
         print "last tid", get_last_terminal_id()
     except Exception as e:
         open_neo_terminal()
-        neo_terminal_send(["ipython\n"])
-        neo_terminal_send(["%load_ext autoreload"])
-        neo_terminal_send(["%autoreload 2"])
+        neo_terminal_send(["jupyter console\n"])
+        # neo_terminal_send(["ipython\n"])
+        # neo_terminal_send(["%load_ext autoreload"])
+        # neo_terminal_send(["%autoreload 2"])
 
 
 # ====
@@ -250,9 +294,12 @@ def is_nvim():
         return False
 
 
-def toggle_windows():
+def toggle_windows(reverse=False):
     # buffer version
-    vim.command(":bn")
+    if reverse:
+        vim.command(":bp")
+    else:
+        vim.command(":bn")
     # window version
     # vim.command(":normal p")
 
@@ -334,9 +381,11 @@ def run_configuration():
     if configured_run_file == '':
         configured_run_file = configure_runtime()
     # print "configuredrun", configured_run_file
-    # clear the console line if anything remains
     open_if_no_terminal()
+    # clear the console line if anything remains
     terminal_send(["i"])
+    # terminal_send(["exit", "ipython"])
+    terminal_send(["exit", "jupyter console"])
     # custom_build_process()
     terminal_send(["run {}".format(configured_run_file)])
     if is_nvim():
